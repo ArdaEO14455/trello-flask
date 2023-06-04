@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import date
 from flask_marshmallow import Marshmallow
 from flask_bcrypt import Bcrypt
+from sqlalchemy.exc import IntegrityError
 
 app = Flask(__name__)
 
@@ -12,9 +13,9 @@ app.config[
     "SQLALCHEMY_DATABASE_URI"
 ] = "postgresql+psycopg2://trello_dev:spameggs123@localhost:5432/trello"
 
-db = SQLAlchemy(app)
-ma = Marshmallow(app)
-bcrypt = Bcrypt(app)
+db = SQLAlchemy(app) #instance of SQL Alchemy to communicate with the database and provide commands from python
+ma = Marshmallow(app) #instance of Marshmallow, used to create schemas
+bcrypt = Bcrypt(app) #instance of bcrypt, used to encrypt and decrypt passwords
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -103,23 +104,41 @@ def seed_db():
 
 @app.route('/register', methods=['POST'])
 def register():
-    # Parse, sanitize and validate the incoming JSON data
-    # via the schema
-    user_info = UserSchema().load(request.json)
-    # Create a new User model instance with the schema data
-    user = User(
-        email=user_info['email'],
-        password=bcrypt.generate_password_hash(user_info['password']).decode('utf-8'),
-        name=user_info['name']
-    )
+    try:    
+        # Parse, sanitize and validate the incoming JSON data
+        # via the schema
+        user_info = UserSchema().load(request.json) #incoming inputted data is sent over as 'user_info' as a dictionary
+        # Create a new User model instance with the schema data
+        user = User(
+            email=user_info['email'],
+            password=bcrypt.generate_password_hash(user_info['password']).decode('utf-8'),
+            name=user_info['name']
+        )
 
-    # Add and commit the new user
-    db.session.add(user)
-    db.session.commit()
+        # Add and commit the new user
+        db.session.add(user)
+        db.session.commit()
 
-    # Return the new user, excluding the password
-    return UserSchema(exclude=['password']).dump(user), 201
+        # Return the new user, excluding the password
+        return UserSchema(exclude=['password']).dump(user), 201
+    except IntegrityError:
+        return {'error': 'email address already in use'}, 409
 
+#Login Route
+@app.route('/login', methods=['POST'])
+def login():
+    try:
+        #compare email
+        stmt = db.select(User).filter_by(email=request.json['email'])
+        user = db.session.scalar(stmt)
+        #compare hashed pw
+        if user and bcrypt.check_password_hash(user.password, request.json['password']):
+            return UserSchema(exclude=['password']).dump(user)
+        else:
+            return {'error': 'invalid email address or password'}, 401
+    except KeyError:
+        return {'error': 'email address and password required'}, 400
+    
 
 @app.route('/cards')
 def all_cards():
