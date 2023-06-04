@@ -4,18 +4,24 @@ from datetime import date
 from flask_marshmallow import Marshmallow
 from flask_bcrypt import Bcrypt
 from sqlalchemy.exc import IntegrityError
+from flask_jwt_extended import JWTManager, create_access_token
+from datetime import timedelta
 
 app = Flask(__name__)
 
 app.config['JSON_SORT_KEYS'] = False
 
+app.config['JWT_SECRET_KEY'] = 'Pixel Appreciation Department'
+
 app.config[
     "SQLALCHEMY_DATABASE_URI"
-] = "postgresql+psycopg2://trello_dev:spameggs123@localhost:5432/trello"
+] = "postgresql+psycopg2://trello_dev:spammeggs123@localhost:5432/trello"
 
+#Create instances of functionalities
 db = SQLAlchemy(app) #instance of SQL Alchemy to communicate with the database and provide commands from python
 ma = Marshmallow(app) #instance of Marshmallow, used to create schemas
 bcrypt = Bcrypt(app) #instance of bcrypt, used to encrypt and decrypt passwords
+jwt = JWTManager(app) #instance of the JWT (token) manager app
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -128,16 +134,15 @@ def register():
 @app.route('/login', methods=['POST'])
 def login():
     try:
-        #compare email
         stmt = db.select(User).filter_by(email=request.json['email'])
         user = db.session.scalar(stmt)
-        #compare hashed pw
         if user and bcrypt.check_password_hash(user.password, request.json['password']):
-            return UserSchema(exclude=['password']).dump(user)
+            token = create_access_token(identity=user.email, expires_delta=timedelta(days=1))
+            return {'token': token, 'user': UserSchema(exclude=['password']).dump(user)}
         else:
-            return {'error': 'invalid email address or password'}, 401
+            return {'error': 'Invalid email address or password'}, 401
     except KeyError:
-        return {'error': 'email address and password required'}, 400
+        return {'error': 'Email and password are required'}, 400
     
 
 @app.route('/cards')
