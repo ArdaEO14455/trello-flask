@@ -1,7 +1,8 @@
-from flask import Flask
+from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from datetime import date
 from flask_marshmallow import Marshmallow
+from flask_bcrypt import Bcrypt
 
 app = Flask(__name__)
 
@@ -13,6 +14,7 @@ app.config[
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
+bcrypt = Bcrypt(app)
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -25,7 +27,7 @@ class User(db.Model):
 
 class UserSchema(ma.Schema):
     class Meta:
-        fields = ('name', 'email', 'is_admin')
+        fields = ('name', 'email', 'password', 'is_admin')
 
 
 class Card(db.Model):
@@ -54,13 +56,13 @@ def seed_db():
     users = [
         User(
             email='admin@spam.com',
-            password='spinynorman',
+            password=bcrypt.generate_password_hash('spinynorman').decode('utf-8'),
             is_admin=True
         ),
         User(
             name='John Cleese',
             email='cleese@spam.com',
-            password='tisbutascratch'
+            password=bcrypt.generate_password_hash('tisbutascratch').decode('utf-8')
         )
     ]
 
@@ -97,6 +99,26 @@ def seed_db():
     # Commit the transaction to the database
     db.session.commit()
     print("Models seeded")
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    # Parse, sanitize and validate the incoming JSON data
+    # via the schema
+    user_info = UserSchema().load(request.json)
+    # Create a new User model instance with the schema data
+    user = User(
+        email=user_info['email'],
+        password=bcrypt.generate_password_hash(user_info['password']).decode('utf-8'),
+        name=user_info['name']
+    )
+
+    # Add and commit the new user
+    db.session.add(user)
+    db.session.commit()
+
+    # Return the new user, excluding the password
+    return UserSchema(exclude=['password']).dump(user), 201
 
 
 @app.route('/cards')
