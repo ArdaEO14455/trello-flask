@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, abort
 from models.card import Card, CardSchema
 from init import db
 from flask_jwt_extended import jwt_required
@@ -20,6 +20,7 @@ def all_cards():
 
 # Get one card
 @cards_bp.route('/<int:card_id>')
+@jwt_required()
 def one_card(card_id):
   stmt = db.select(Card).filter_by(id=card_id)
   card = db.session.scalar(stmt)
@@ -30,6 +31,7 @@ def one_card(card_id):
   
 #Create a new card
 @cards_bp.route('/', methods=['POST'])
+@jwt_required()
 def create_card():
   #Load the incoming POST data via the schema
   card_info = CardSchema().load(request.json)
@@ -48,7 +50,9 @@ def create_card():
 
 #Update Card
 @cards_bp.route('/<int:card_id>', methods=['PUT', 'PATCH'])
+@jwt_required()
 def update_card(card_id):
+  admin_required()
   stmt = db.select(Card).filter_by(id=card_id)
   card = db.session.scalar(stmt)
   card_info = CardSchema().load(request.json)
@@ -58,5 +62,19 @@ def update_card(card_id):
     card['status'] = card_info.get['status', card.status],
     db.session.commit()
     return CardSchema().dump(card)
+  else:
+    return {'error': 'Card not found'}, 404
+  
+  #Delete Card
+@cards_bp.route('/<int:card_id>', methods=['DELETE'])
+@jwt_required()
+def one_card(card_id):
+  admin_required()
+  stmt = db.select(Card).filter_by(id=card_id)
+  card = db.session.scalar(stmt)
+  if card:
+    db.session.delete(card)
+    db.session.commit()
+    return {}, 200
   else:
     return {'error': 'Card not found'}, 404
